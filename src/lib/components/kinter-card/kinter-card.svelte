@@ -1,11 +1,11 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
-	import type { DragEventHandler } from 'svelte/elements';
 
 	import { Action, type Kinter } from '$lib/interfaces';
 	import { absVec2, degToRad, mulVec2, scalarVec2, type Vector2 } from '$lib/utils';
 
-	export let kinter: Kinter | undefined;
+	export let kinter: Kinter;
+	export let isRevealed = false;
 
 	let ref: HTMLElement;
 	let isDragging = false;
@@ -16,13 +16,12 @@
 		originY = 0,
 		rot = 0,
 		offsetTop = 0,
-		r = 0,
 		x = 0,
 		y = 0;
 	const THRESHOLD = degToRad(10);
 	let action: Action | undefined;
 
-	const handleDrag: DragEventHandler<HTMLElement> = (e) => {
+	const handleMouseMove = (e: MouseEvent) => {
 		if (isDragging) {
 			const { clientX, clientY } = e;
 			const vec1: Vector2 = [1, 0];
@@ -46,24 +45,18 @@
 		}
 	};
 
-	const handleDragStart: DragEventHandler<HTMLElement> = (e) => {
+	const handleMouseDown = () => {
 		isDragging = true;
-		if (e.dataTransfer) {
-			e.dataTransfer.setDragImage(new Image(), 0, 0);
-		}
+		document.body.style.cursor = 'none';
 	};
 
-	const handleDragEnd: DragEventHandler<HTMLElement> = (e) => {
-		console.log(action);
+	const handleMouseUp = () => {
+		document.body.style.cursor = 'initial';
 		isDragging = false;
 		rot = 0;
 		x = 0;
 		y = 0;
 		action = undefined;
-	};
-
-	const handleDragOver: DragEventHandler<HTMLElement> = (e) => {
-		e.preventDefault();
 	};
 
 	onMount(() => {
@@ -72,42 +65,49 @@
 		offsetX = originX = right - width / 2;
 		offsetY = originY + OFFSET;
 		offsetTop = height + OFFSET;
-		r = OFFSET + height / 2;
 	});
+
+	const drag = (node: HTMLElement) => {
+		document.addEventListener('mousemove', handleMouseMove);
+		node.addEventListener('mousedown', handleMouseDown);
+		document.addEventListener('mouseup', handleMouseUp);
+
+		return {
+			destroy() {
+				document.removeEventListener('mousemove', handleMouseMove);
+				node.removeEventListener('mousedown', handleMouseDown);
+				document.removeEventListener('mouseup', handleMouseUp);
+			}
+		};
+	};
 
 	$: isLike = action === Action.like;
 	$: isSkip = action === Action.skip;
 </script>
 
 <article
+	use:drag
 	bind:this={ref}
-	class="card card-compact bg-base-100 w-96 shadow cursor-pointer will-change-transform transform-gpu"
-	draggable="true"
+	class="card card-compact bg-base-100 w-96 h-[568px] shadow cursor-pointer will-change-transform transform-gpu"
+	draggable="false"
 	class:shadow-xl={isDragging}
 	style="transform: rotate({rot}rad) translate({x}px, {y}px); transform-origin: center {offsetTop}px;"
-	on:dragstart={handleDragStart}
-	on:dragend={handleDragEnd}
-	on:drag={handleDrag}
-	on:dragover={handleDragOver}
 >
-	<div class="px-5 pt-5">
-		<div class="relative overflow-hidden">
-			<figure>
-				<img
-					draggable="false"
-					class="rounded-xl object-cover h-[468px]"
-					height="468"
-					src="https://img.daisyui.com/images/stock/photo-1606107557195-0e29a4b5b4aa.webp"
-					alt="Shoes"
-				/>
-			</figure>
-			<div class="absolute text-white bottom-0 left-0 p-2">
-				<h2 class="card-title">Shoes!</h2>
-				<p>If a dog chews shoes whose shoes does he choose?</p>
-			</div>
+	<div class="relative overflow-hidden px-5 pt-5 grow" class:blur-xl={!isRevealed}>
+		<figure class="h-full">
+			<img
+				draggable="false"
+				class="rounded-xl object-cover h-full"
+				src="https://img.daisyui.com/images/stock/photo-1606107557195-0e29a4b5b4aa.webp"
+				alt="Shoes"
+			/>
+		</figure>
+		<div class="absolute text-white bottom-0 left-0 px-8 pb-2">
+			<h2 class="card-title">{kinter.id} {kinter.displayName}</h2>
+			<p>{kinter.biography}</p>
 		</div>
 	</div>
-	<div class="card-body">
+	<div class="card-body !grow-0">
 		<div class="card-actions justify-center">
 			<button class="btn btn-circle" class:is-skip={isSkip}>
 				<svg

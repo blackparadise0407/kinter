@@ -32,6 +32,6 @@
 		</div>
 	</div>
 </div> -->
-<main class="h-screen grid place-content-center overflow-hidden">
+<main class="h-screen grid place-content-center overflow-hidden" on:dragover|preventDefault>
 	<slot />
 </main>
