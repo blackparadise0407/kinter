@@ -1,12 +1,20 @@
 <script lang="ts">
-	import { onMount } from 'svelte';
+	import { createEventDispatcher, onMount } from 'svelte';
 
 	import { Action, type Kinter } from '$lib/interfaces';
-	import { absVec2, degToRad, mulVec2, scalarVec2, type Vector2 } from '$lib/utils';
+	import { absVec2, clamp, degToRad, fromVec2, mulVec2, type Vector2 } from '$lib/utils';
+	import type { MouseEventHandler } from 'svelte/elements';
 
 	export let kinter: Kinter;
 	export let isRevealed = false;
 
+	const dispatch = createEventDispatcher<{
+		action: {
+			kinter: Kinter;
+			action: Action;
+		};
+	}>();
+	let currentImgIdx = 0;
 	let ref: HTMLElement;
 	let isDragging = false;
 	const OFFSET = 500;
@@ -17,46 +25,71 @@
 		rot = 0,
 		offsetTop = 0,
 		x = 0,
-		y = 0;
-	const THRESHOLD = degToRad(10);
+		y = 0,
+		imgClickStart = 0;
+	const ANGLE_THRESHOLD = degToRad(10);
+	const VERTICAL_THRESHOLD = -100;
 	let action: Action | undefined;
 
-	const handleMouseMove = (e: MouseEvent) => {
-		if (isDragging) {
-			const { clientX, clientY } = e;
-			const vec1: Vector2 = [1, 0];
-			const vec2: Vector2 = [clientX - offsetX, clientY - offsetY];
-			const theta = mulVec2(vec1, vec2) / (absVec2(vec1) * absVec2(vec2));
-			const dir = Math.sign(clientX - offsetX);
-			const angle = Math.abs(Math.PI / 2 - Math.acos(theta));
-			if (angle > THRESHOLD) {
-				if (dir > 0 && action !== Action.like) {
-					action = Action.like;
-				} else if (dir < 0 && action !== Action.skip) {
-					action = Action.skip;
-				}
-			} else if (action != undefined) {
-				action = undefined;
-			}
+	const handleDrag = (e: MouseEvent) => {
+		if (!isDragging) {
+			return;
+		}
+		const { clientX, clientY } = e;
+		const vec1: Vector2 = [1, 0];
+		const vec2: Vector2 = [clientX - offsetX, clientY - offsetY];
+		const theta = mulVec2(vec1, vec2) / (absVec2(vec1) * absVec2(vec2));
+		const dir = Math.sign(clientX - offsetX);
+		const angle = Math.abs(Math.PI / 2 - Math.acos(theta));
 
-			rot = dir * angle;
-			const vec3: Vector2 = [clientX - originX, clientY - originY];
-			[x, y] = scalarVec2(vec3, absVec2(vec3) * 0.0009);
+		rot = dir * clamp(angle, 0, 0.7);
+		[x, y] = fromVec2([originX, originY], [clientX, clientY]);
+		x *= 0.02;
+		if (angle > ANGLE_THRESHOLD) {
+			if (dir > 0 && action !== Action.like) {
+				action = Action.like;
+			} else if (dir < 0 && action !== Action.skip) {
+				action = Action.skip;
+			}
+		} else if (y < VERTICAL_THRESHOLD) {
+			action = Action.superLike;
+		} else if (action != undefined) {
+			action = undefined;
 		}
 	};
 
-	const handleMouseDown = () => {
+	const handleDragOver = (e: DragEvent) => {
+		if (e.dataTransfer) {
+			e.dataTransfer.dropEffect = 'move';
+		}
+	};
+
+	const handleDragStart = (e: DragEvent) => {
+		if (e.dataTransfer) {
+			e.dataTransfer.setDragImage(new Image(), 0, 0);
+		}
 		isDragging = true;
 		document.body.style.cursor = 'none';
 	};
 
-	const handleMouseUp = () => {
-		document.body.style.cursor = 'initial';
+	const handleDragEnd = () => {
 		isDragging = false;
-		rot = 0;
-		x = 0;
-		y = 0;
-		action = undefined;
+		document.body.style.cursor = 'initial';
+		if (action == undefined) {
+			action = undefined;
+			rot = 0;
+			x = 0;
+			y = 0;
+			return;
+		}
+		handleDispatchAction(action);
+	};
+
+	const handleDispatchAction = (action: Action) => {
+		dispatch('action', {
+			action,
+			kinter
+		});
 	};
 
 	onMount(() => {
@@ -67,49 +100,69 @@
 		offsetTop = height + OFFSET;
 	});
 
-	const drag = (node: HTMLElement) => {
-		document.addEventListener('mousemove', handleMouseMove);
-		node.addEventListener('mousedown', handleMouseDown);
-		document.addEventListener('mouseup', handleMouseUp);
+	const handleChangeImg: MouseEventHandler<HTMLElement> = (e) => {
+		if (Date.now() - imgClickStart > 100) {
+			return;
+		}
+		const { width, right } = (e.target as HTMLElement).getBoundingClientRect();
+		const middle = right - width / 2;
+		const next = e.clientX > middle ? 1 : +kinter.images.length - 1;
+		currentImgIdx = (currentImgIdx + next) % kinter.images.length;
+	};
 
-		return {
-			destroy() {
-				document.removeEventListener('mousemove', handleMouseMove);
-				node.removeEventListener('mousedown', handleMouseDown);
-				document.removeEventListener('mouseup', handleMouseUp);
-			}
-		};
+	const handleImgMouseDown = () => {
+		imgClickStart = Date.now();
 	};
 
 	$: isLike = action === Action.like;
 	$: isSkip = action === Action.skip;
+	$: isSuperLike = action === Action.superLike;
 </script>
 
 <article
-	use:drag
 	bind:this={ref}
-	class="card card-compact bg-base-100 w-96 h-[568px] shadow cursor-pointer will-change-transform transform-gpu"
-	draggable="false"
-	class:shadow-xl={isDragging}
+	class="card card-compact bg-base-100 w-96 h-[568px] border cursor-pointer will-change-transform transform-gpu overflow-hidden"
+	draggable="true"
+	on:dragover|preventDefault={handleDragOver}
+	on:drag={handleDrag}
+	on:dragstart={handleDragStart}
+	on:dragend={handleDragEnd}
 	style="transform: rotate({rot}rad) translate({x}px, {y}px); transform-origin: center {offsetTop}px;"
 >
-	<div class="relative overflow-hidden px-5 pt-5 grow" class:blur-xl={!isRevealed}>
-		<figure class="h-full">
+	<!-- svelte-ignore a11y-no-noninteractive-element-interactions -->
+	<div class="relative overflow-hidden px-5 pt-5 grow">
+		<!-- svelte-ignore a11y-click-events-have-key-events -->
+		<figure
+			class="relative h-full rounded-xl"
+			on:mousedown={handleImgMouseDown}
+			on:click={handleChangeImg}
+		>
+			<div class="absolute flex gap-1 top-2 left-2 right-2 z-[1]">
+				{#each kinter.images as _, i (i)}
+					<div class="h-1 grow bg-white rounded" class:bg-opacity-40={i !== currentImgIdx}></div>
+				{/each}
+			</div>
 			<img
+				class:blur-xl={!isRevealed}
 				draggable="false"
-				class="rounded-xl object-cover h-full"
-				src="https://img.daisyui.com/images/stock/photo-1606107557195-0e29a4b5b4aa.webp"
-				alt="Shoes"
+				class="w-full object-cover transition-[-webkit-filter] delay-100 h-full"
+				src={kinter.images[currentImgIdx]}
+				alt=""
 			/>
 		</figure>
-		<div class="absolute text-white bottom-0 left-0 px-8 pb-2">
+		<div class="absolute text-white bottom-0 left-0 px-8 pb-2" class:blur-xl={!isRevealed}>
 			<h2 class="card-title">{kinter.id} {kinter.displayName}</h2>
-			<p>{kinter.biography}</p>
+			<p class="line-clamp-2">{kinter.biography}</p>
 		</div>
 	</div>
 	<div class="card-body !grow-0">
 		<div class="card-actions justify-center">
-			<button class="btn btn-circle" class:is-skip={isSkip}>
+			<button
+				class="btn btn-circle skip-btn action-btn"
+				class:is-skip={isSkip}
+				class:action-btn-active={isSkip}
+				on:click={() => handleDispatchAction(Action.skip)}
+			>
 				<svg
 					xmlns="http://www.w3.org/2000/svg"
 					fill="none"
@@ -121,7 +174,12 @@
 					<path stroke-linecap="round" stroke-linejoin="round" d="M6 18 18 6M6 6l12 12" />
 				</svg>
 			</button>
-			<button class="btn btn-circle">
+			<button
+				class="btn btn-circle super-like-btn action-btn"
+				class:is-super-like={isSuperLike}
+				class:action-btn-active={isSuperLike}
+				on:click={() => handleDispatchAction(Action.superLike)}
+			>
 				<svg
 					xmlns="http://www.w3.org/2000/svg"
 					fill="none"
@@ -137,7 +195,12 @@
 					/>
 				</svg>
 			</button>
-			<button class="btn btn-circle" class:is-like={isLike}>
+			<button
+				class="btn btn-circle like-btn action-btn"
+				class:is-like={isLike}
+				class:action-btn-active={isLike}
+				on:click={() => handleDispatchAction(Action.like)}
+			>
 				<svg
 					xmlns="http://www.w3.org/2000/svg"
 					viewBox="0 0 24 24"
@@ -158,23 +221,27 @@
 </article>
 
 <style>
-	.is-like {
-		@apply btn-error animate-bounce;
+	.is-like,
+	.like-btn:hover {
+		@apply btn-error;
 	}
 
-	.is-like svg {
+	.is-skip,
+	.skip-btn:hover {
+		@apply btn-warning;
+	}
+
+	.is-super-like,
+	.super-like-btn:hover {
+		@apply btn-info;
+	}
+
+	.action-btn-active {
+		@apply animate-bounce;
+	}
+
+	.action-btn-active svg,
+	.action-btn:hover svg {
 		@apply animate-pulse fill-white stroke-white;
-	}
-
-	.is-skip {
-		@apply btn-warning animate-bounce;
-	}
-
-	.is-skip svg {
-		@apply animate-pulse fill-white stroke-white;
-	}
-
-	.is-super-like {
-		@apply btn-info animate-bounce;
 	}
 </style>

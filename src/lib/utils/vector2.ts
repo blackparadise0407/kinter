@@ -39,6 +39,8 @@
 export type Vector2 = [number, number];
 export const mulVec2 = (v1: Vector2, v2: Vector2) => v1[0] * v2[0] + v1[1] * v2[1];
 export const absVec2 = (v: Vector2) => Math.sqrt(Math.pow(v[0], 2) + Math.pow(v[1], 2));
-export const scalarVec2 = (v: Vector2, x: number) => [v[0] * x, +v[1] * x];
+export const scalarVec2 = (v: Vector2, x: number): Vector2 => [v[0] * x, +v[1] * x];
 export const radToDeg = (rad: number) => (rad * 180) / Math.PI;
 export const degToRad = (deg: number) => (deg * Math.PI) / 180;
+export const clamp = (x: number, min: number, max: number) => Math.min(Math.max(x, min), max);
+export const fromVec2 = (v1: Vector2, v2: Vector2): Vector2 => [v2[0] - v1[0], v2[1] - v1[1]];

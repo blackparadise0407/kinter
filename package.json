@@ -40,6 +40,9 @@
 	},
 	"type": "module",
 	"dependencies": {
-		"@auth/sveltekit": "^1.4.2"
+		"@auth/prisma-adapter": "^2.4.2",
+		"@auth/sveltekit": "^1.4.2",
+		"@prisma/client": "^5.19.1",
+		"prisma": "^5.19.1"
 	}
 }
